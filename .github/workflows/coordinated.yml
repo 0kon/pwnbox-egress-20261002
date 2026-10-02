@@ -10,7 +10,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        worker: [one, two, three]
+        worker: [two]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
