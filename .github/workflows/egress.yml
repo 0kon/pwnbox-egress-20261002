@@ -1,0 +1,33 @@
+name: Authorized lab egress probe
+on:
+  workflow_dispatch:
+    inputs:
+      host:
+        required: true
+        type: string
+      release_at:
+        required: true
+        type: string
+      count:
+        required: true
+        type: string
+jobs:
+  burst:
+    strategy:
+      fail-fast: false
+      matrix:
+        worker: [one, two, three]
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for synchronized release and record responses
+        env:
+          LAB_HOST: ${{ inputs.host }}
+          LAB_COOKIE: ${{ secrets.LAB_COOKIE }}
+          RELEASE_AT: ${{ inputs.release_at }}
+          REQUEST_COUNT: ${{ inputs.count }}
+          WORKER_ID: ${{ matrix.worker }}
+        run: python3 worker.py
