@@ -1,0 +1,25 @@
+name: Authorized lab pair timing control
+on:
+  workflow_dispatch:
+    inputs:
+      coordinator_url:
+        required: true
+        type: string
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        worker: [one, two, three]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run bounded authorized lab timing controls
+        env:
+          COORDINATOR_URL: ${{ inputs.coordinator_url }}
+          CTRL_TOKEN: ${{ secrets.CTRL_TOKEN }}
+          WORKER_ID: ${{ matrix.worker }}
+        run: python3 coordinated_worker.py
